@@ -2,11 +2,27 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Cpu, Database, Layers, ShieldAlert, Sparkles, Clock, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Cpu,
+  Database,
+  Layers,
+  ShieldAlert,
+  Sparkles,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Zap,
+  Activity,
+  Flame,
+  LineChart,
+} from "lucide-react";
 import Timeline from "@/components/Timeline";
 import MemoryChart from "@/components/MemoryChart";
 import ThroughputChart from "@/components/ThroughputChart";
 import Flamegraph from "@/components/Flamegraph";
+import RooflineChart from "@/components/RooflineChart";
 import { Run } from "@/types/run";
 
 interface PageProps {
@@ -18,6 +34,7 @@ export default function RunDetailPage({ params }: PageProps) {
   const [run, setRun] = useState<Run | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"roofline" | "timeline" | "flamegraph">("roofline");
 
   // Expanded trace state
   const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
@@ -43,7 +60,7 @@ export default function RunDetailPage({ params }: PageProps) {
 
     // Connect to SSE stream for live updates of this specific run
     const eventSource = new EventSource(`/api/stream?runId=${runId}`);
-    
+
     eventSource.addEventListener("update", (event: MessageEvent) => {
       try {
         const updatedRun = JSON.parse(event.data);
@@ -108,6 +125,10 @@ export default function RunDetailPage({ params }: PageProps) {
 
   const peakRam = run.stages.length > 0 ? Math.max(...run.stages.map((s) => s.ram_used_mb)) : 0;
   const peakGpu = run.stages.length > 0 ? Math.max(...run.stages.map((s) => s.gpu_mem_used_mb)) : 0;
+  const allOperators = [
+    ...(run.operators || []),
+    ...run.stages.flatMap((s) => s.operators || []),
+  ];
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -120,11 +141,16 @@ export default function RunDetailPage({ params }: PageProps) {
 
       {/* Title & Metadata */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
           <h1 className="text-2xl md:text-3xl font-extrabold text-slate-100">{run.name}</h1>
           <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
             Live Connected
           </span>
+          {run.peak_tflops ? (
+            <span className="text-[10px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> v2.0 Roofline Calibrated
+            </span>
+          ) : null}
         </div>
         <p className="text-sm text-slate-400">
           Run ID: <code className="text-indigo-300 text-xs">{run.id}</code> &bull; Ingested at {new Date(run.created_at).toLocaleString()}
@@ -150,7 +176,9 @@ export default function RunDetailPage({ params }: PageProps) {
           <div>
             <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Processor Specs</div>
             <div className="text-sm font-semibold text-slate-300">CPUs: {run.hardware_info?.cpu_count || 1}</div>
-            <div className="text-xs text-slate-500 truncate max-w-[180px]">{run.hardware_info?.gpu_type || "No GPU"}</div>
+            <div className="text-xs text-slate-500 truncate max-w-[180px]">
+              {run.device_name || run.hardware_info?.gpu_type || "No GPU"}
+            </div>
           </div>
         </div>
 
@@ -174,101 +202,166 @@ export default function RunDetailPage({ params }: PageProps) {
             <div className="text-sm font-semibold text-slate-300">
               Time: {totalDuration > 1000 ? `${(totalDuration / 1000).toFixed(2)}s` : `${totalDuration.toFixed(0)}ms`}
             </div>
-            <div className="text-xs text-slate-500">{run.stages.length} Stages Profiled</div>
+            <div className="text-xs text-slate-500">{run.stages.length} Stages &bull; {allOperators.length} Operators</div>
           </div>
         </div>
       </div>
 
-      {/* Main Charts area */}
-      <div className="grid grid-cols-1 gap-8">
-        <Timeline stages={run.stages} />
-        
-        <MemoryChart stages={run.stages} />
+      {/* Tab Navigation Navigation */}
+      <div className="flex border-b border-slate-800 mb-8 gap-2">
+        <button
+          onClick={() => setActiveTab("roofline")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === "roofline"
+              ? "border-indigo-500 text-indigo-300 bg-indigo-500/10"
+              : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-850/40"
+          }`}
+        >
+          <Sparkles className="h-4 w-4 text-indigo-400" />
+          Roofline Model (v2.0)
+          <span className="ml-1.5 px-2 py-0.2 rounded-full text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            {allOperators.length} ops
+          </span>
+        </button>
 
-        <ThroughputChart stages={run.stages} />
+        <button
+          onClick={() => setActiveTab("timeline")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === "timeline"
+              ? "border-sky-500 text-sky-300 bg-sky-500/10"
+              : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-850/40"
+          }`}
+        >
+          <Activity className="h-4 w-4 text-sky-400" />
+          Stage Timeline &amp; Resources
+        </button>
+
+        <button
+          onClick={() => setActiveTab("flamegraph")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === "flamegraph"
+              ? "border-amber-500 text-amber-300 bg-amber-500/10"
+              : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-850/40"
+          }`}
+        >
+          <Flame className="h-4 w-4 text-amber-400" />
+          Operator Traces
+        </button>
       </div>
 
-      {/* Stage Breakdown & Flamegraph Accordion */}
-      <div className="mt-8 space-y-4">
-        <h3 className="text-lg font-semibold text-slate-200">Stages Profile Details</h3>
-        
-        <div className="space-y-4">
-          {run.stages.map((stage) => {
-            const isExpanded = expandedStages[stage.id] || false;
-            const trace = stageTraces[stage.id] || null;
-            const isLoading = traceLoading[stage.id] || false;
-            const traceError = traceErrors[stage.id] || null;
+      {/* Tab Content: Roofline Model (v2.0) */}
+      {activeTab === "roofline" && (
+        <RooflineChart
+          runId={run.id}
+          initialCeilings={{
+            device_name: run.device_name || run.hardware_info?.gpu_type || "NVIDIA GPU",
+            peak_tflops: run.peak_tflops || 19.5,
+            peak_bandwidth_gb_s: run.peak_bandwidth_gb_s || 900.0,
+            ridge_point: run.ridge_point || 21.67,
+            precision: "FP32",
+            is_cuda_calibrated: !!run.peak_tflops,
+          }}
+          initialOperators={allOperators}
+        />
+      )}
 
-            return (
-              <div key={stage.id} className="glass-card overflow-hidden">
-                {/* Header panel */}
-                <div 
-                  className={`p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer transition-colors ${
-                    isExpanded ? "bg-slate-850/50 border-b border-slate-800/60" : "hover:bg-slate-850/30"
-                  }`}
-                  onClick={() => toggleStageExpand(stage.id, !!stage.has_trace)}
-                >
-                  <div>
-                    <h4 className="text-md font-bold text-slate-200">{stage.name}</h4>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Duration: <span className="text-sky-400 font-semibold">{stage.duration_ms.toFixed(0)}ms</span> &bull; 
-                      RAM Peak: <span className="text-indigo-400 font-semibold">{stage.ram_used_mb.toFixed(0)} MB</span>
-                      {stage.gpu_mem_used_mb > 0 && (
-                        <> &bull; GPU Peak: <span className="text-amber-400 font-semibold">{stage.gpu_mem_used_mb.toFixed(0)} MB</span></>
-                      )}
-                    </p>
-                  </div>
-                  
-                  <div className="flex items-center gap-3">
-                    {stage.has_trace ? (
-                      <button 
-                        className={`glow-btn text-xs font-semibold px-4 py-2 flex items-center gap-1.5 ${
-                          isExpanded ? "bg-indigo-600 border-indigo-500" : ""
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStageExpand(stage.id, true);
-                        }}
-                      >
-                        <Zap className="h-3.5 w-3.5" />
-                        {isExpanded ? "Close Flamegraph" : "Trace Flamegraph"}
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500 border border-slate-800 rounded-lg px-3 py-2 font-medium animate-pulse">
-                        No Trace Recorded
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded Flamegraph Panel */}
-                {isExpanded && (
-                  <div className="p-5 bg-slate-950/40 border-t border-slate-900">
-                    {isLoading && (
-                      <div className="flex items-center justify-center py-10 gap-3 text-sm text-slate-400">
-                        <Loader2 className="animate-spin h-5 w-5 text-indigo-400" />
-                        Loading execution trace...
-                      </div>
-                    )}
-                    
-                    {traceError && (
-                      <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-lg text-sm flex items-center gap-2">
-                        <ShieldAlert className="h-5 w-5 text-rose-400 shrink-0" />
-                        <span>{traceError}</span>
-                      </div>
-                    )}
-
-                    {!isLoading && !traceError && (
-                      <Flamegraph traceJsonStr={trace} />
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {/* Tab Content: Stage Timeline & Resources */}
+      {activeTab === "timeline" && (
+        <div className="grid grid-cols-1 gap-8">
+          <Timeline stages={run.stages} />
+          <MemoryChart stages={run.stages} />
+          <ThroughputChart stages={run.stages} />
         </div>
-      </div>
+      )}
+
+      {/* Tab Content: Operator Traces & Flamegraphs */}
+      {activeTab === "flamegraph" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-200">PyTorch CUDA Execution Traces</h3>
+            <span className="text-xs text-slate-400">
+              Click any stage below to inspect its Chrome trace flamegraph
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {run.stages.map((stage) => {
+              const isExpanded = expandedStages[stage.id] || false;
+              const trace = stageTraces[stage.id] || null;
+              const isLoading = traceLoading[stage.id] || false;
+              const traceError = traceErrors[stage.id] || null;
+
+              return (
+                <div key={stage.id} className="glass-card overflow-hidden">
+                  {/* Header panel */}
+                  <div
+                    className={`p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer transition-colors ${
+                      isExpanded ? "bg-slate-850/50 border-b border-slate-800/60" : "hover:bg-slate-850/30"
+                    }`}
+                    onClick={() => toggleStageExpand(stage.id, !!stage.has_trace)}
+                  >
+                    <div>
+                      <h4 className="text-md font-bold text-slate-200">{stage.name}</h4>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Duration: <span className="text-sky-400 font-semibold">{stage.duration_ms.toFixed(0)}ms</span> &bull; 
+                        RAM Peak: <span className="text-indigo-400 font-semibold">{stage.ram_used_mb.toFixed(0)} MB</span>
+                        {stage.gpu_mem_used_mb > 0 && (
+                          <> &bull; GPU Peak: <span className="text-amber-400 font-semibold">{stage.gpu_mem_used_mb.toFixed(0)} MB</span></>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {stage.has_trace ? (
+                        <button
+                          className={`glow-btn text-xs font-semibold px-4 py-2 flex items-center gap-1.5 ${
+                            isExpanded ? "bg-indigo-600 border-indigo-500" : ""
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStageExpand(stage.id, true);
+                          }}
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                          {isExpanded ? "Close Flamegraph" : "Trace Flamegraph"}
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500 border border-slate-800 rounded-lg px-3 py-2 font-medium">
+                          No Trace Recorded
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expanded Flamegraph Panel */}
+                  {isExpanded && (
+                    <div className="p-5 bg-slate-950/40 border-t border-slate-900">
+                      {isLoading && (
+                        <div className="flex items-center justify-center py-10 gap-3 text-sm text-slate-400">
+                          <Loader2 className="animate-spin h-5 w-5 text-indigo-400" />
+                          Loading execution trace...
+                        </div>
+                      )}
+
+                      {traceError && (
+                        <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-lg text-sm flex items-center gap-2">
+                          <ShieldAlert className="h-5 w-5 text-rose-400 shrink-0" />
+                          <span>{traceError}</span>
+                        </div>
+                      )}
+
+                      {!isLoading && !traceError && (
+                        <Flamegraph traceJsonStr={trace} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
