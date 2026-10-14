@@ -40,6 +40,7 @@ try:
                 "../sampler-cpp/src/proc_reader.cpp",
                 "../sampler-cpp/src/nvml_reader.cpp",
                 "../sampler-cpp/src/ipc_server.cpp",
+                "../sampler-cpp/src/hardware_prober.cu",
                 "../sampler-cpp/src/main.cpp",
             ],
             include_dirs=["../sampler-cpp/src"],

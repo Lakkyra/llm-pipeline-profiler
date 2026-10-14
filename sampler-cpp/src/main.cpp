@@ -95,3 +95,11 @@ void stop_sampler() {
         sampler_thread = nullptr;
     }
 }
+
+HardwareProbeResult probe_hardware(int device_id) {
+    return probe_gpu_hardware(device_id);
+}
+
+HardwareProbeResult lookup_hardware_specs(const std::string& gpu_name) {
+    return lookup_gpu_database_specs(gpu_name);
+}
