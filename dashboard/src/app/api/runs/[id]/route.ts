@@ -10,12 +10,7 @@ export async function GET(
     
     const run = await db.run.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        created_at: true,
-        model_name: true,
-        hardware_info: true,
+      include: {
         stages: {
           orderBy: { start_time: "asc" },
           select: {
@@ -32,7 +27,11 @@ export async function GET(
             metrics: {
               orderBy: { timestamp: "asc" },
             },
+            operators: true,
           },
+        },
+        operators: {
+          orderBy: { operational_intensity: "asc" },
         },
       },
     });
@@ -48,8 +47,21 @@ export async function GET(
     });
     const traceIdsSet = new Set(stagesWithTrace.map((s) => s.id));
 
+    // Combine stage-level operators and run-level operators if any
+    const allOperators = [...run.operators];
+    for (const st of run.stages) {
+      if (Array.isArray(st.operators)) {
+        for (const op of st.operators) {
+          if (!allOperators.some((existing) => existing.id === op.id)) {
+            allOperators.push(op);
+          }
+        }
+      }
+    }
+
     const runWithTraceFlag = {
       ...run,
+      operators: allOperators,
       stages: run.stages.map((stage) => ({
         ...stage,
         has_trace: traceIdsSet.has(stage.id),
